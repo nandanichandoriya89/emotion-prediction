@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mood Reader — emotion from text</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0f0d1a;
+    --bg-2: #14111f;
+    --surface: #1a1728;
+    --surface-line: rgba(237, 233, 245, 0.09);
+    --text: #ede9f5;
+    --muted: #948da9;
+    --accent: #7c6fe0;
+    --accent-soft: rgba(124, 111, 224, 0.16);
+    --radius: 20px;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+  }
+
+  body {
+    font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    color: var(--text);
+    background: radial-gradient(ellipse 120% 80% at 50% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%), var(--bg);
+    transition: background 900ms var(--ease);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 8vh 20px 10vh;
+    overflow-x: hidden;
+  }
+
+  /* drifting ambient field, non-interactive, subtle */
+  .field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .field span {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: 0.35;
+    background: var(--accent);
+    transition: background 900ms var(--ease);
+    animation: drift 22s ease-in-out infinite;
+  }
+  .field span:nth-child(1) { width: 320px; height: 320px; top: -80px; left: -60px; animation-duration: 26s; }
+  .field span:nth-child(2) { width: 260px; height: 260px; bottom: -60px; right: 10%; animation-duration: 30s; animation-delay: -8s; }
+  .field span:nth-child(3) { width: 180px; height: 180px; top: 40%; right: -40px; animation-duration: 24s; animation-delay: -14s; opacity: 0.22; }
+
+  @keyframes drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(30px, -24px) scale(1.08); }
+    66% { transform: translate(-22px, 18px) scale(0.95); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .field span { animation: none; }
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 560px;
+  }
+
+  .mark {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 52px;
+  }
+  .mark .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6b6480;
+    transition: background 400ms var(--ease), box-shadow 400ms var(--ease);
+    flex-shrink: 0;
+  }
+  .mark .dot.ready { background: #57d18c; box-shadow: 0 0 0 4px rgba(87, 209, 140, 0.15); }
+  .mark .dot.down { background: #e5533d; box-shadow: 0 0 0 4px rgba(229, 83, 61, 0.15); }
+  .mark strong { color: var(--text); font-weight: 600; letter-spacing: 0.01em; }
+
+  h1 {
+    font-family: "Newsreader", Georgia, serif;
+    font-weight: 500;
+    font-style: italic;
+    font-size: clamp(32px, 6vw, 44px);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 12px;
+  }
+
+  p.lede {
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1.6;
+    max-width: 44ch;
+    margin: 0 0 40px;
+  }
+
+  form { margin: 0; }
+
+  .field-wrap {
+    position: relative;
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--surface-line);
+    transition: border-color 300ms var(--ease), box-shadow 300ms var(--ease);
+  }
+  .field-wrap:focus-within {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--surface-line));
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 128px;
+    resize: vertical;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 17px;
+    line-height: 1.55;
+    padding: 20px 20px 16px;
+    caret-color: var(--accent);
+  }
+  textarea::placeholder { color: #6a637f; }
+
+  .field-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px 14px;
+  }
+
+  .count { font-size: 12.5px; color: #6a637f; font-variant-numeric: tabular-nums; }
+
+  button.go {
+    appearance: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 15px;
+    color: #0f0d1a;
+    background: var(--text);
+    padding: 10px 20px;
+    border-radius: 999px;
+    transition: transform 160ms var(--ease), opacity 200ms var(--ease), background 300ms var(--ease);
+  }
+  button.go:hover:not(:disabled) { transform: translateY(-1px); }
+  button.go:active:not(:disabled) { transform: translateY(0); }
+  button.go:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.go:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  button.go .spin {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid rgba(15,13,26,0.25);
+    border-top-color: #0f0d1a;
+    margin-right: 8px;
+    vertical-align: -2px;
+    animation: spin 700ms linear infinite;
+    display: none;
+  }
+  button.go.loading .spin { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error {
+    margin-top: 14px;
+    font-size: 14px;
+    color: #ff9a86;
+    display: none;
+  }
+  .error.show { display: block; }
+
+  /* ---------- result reveal ---------- */
+  #result {
+    margin-top: 44px;
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+    transition: opacity 520ms var(--ease), transform 520ms var(--ease);
+    pointer-events: none;
+  }
+  #result.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+
+  .headline-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--surface-line);
+    margin-bottom: 22px;
+  }
+
+  .emoji {
+    font-size: 52px;
+    line-height: 1;
+    transform: scale(0);
+    transition: transform 640ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition-delay: 120ms;
+  }
+  #result.show .emoji { transform: scale(1); }
+
+  .headline-text .say {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 2px;
+  }
+  .headline-text .emotion-word {
+    font-family: "Newsreader", Georgia, serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 30px;
+    color: var(--accent);
+    text-transform: capitalize;
+    transition: color 500ms var(--ease);
+  }
+
+  .bars { display: flex; flex-direction: column; gap: 14px; }
+  .bar-row { display: grid; grid-template-columns: 84px 1fr 48px; align-items: center; gap: 12px; }
+  .bar-label { font-size: 13.5px; color: var(--muted); text-transform: capitalize; }
+  .bar-track {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-line);
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width 900ms var(--ease), background 500ms var(--ease);
+    transition-delay: 200ms;
+  }
+  .bar-pct { font-size: 12.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .bar-row.top .bar-label, .bar-row.top .bar-pct { color: var(--text); font-weight: 600; }
+
+  /* ---------- history ---------- */
+  #history {
+    margin-top: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--surface-line);
+    padding: 6px 12px 6px 8px;
+    border-radius: 999px;
+    animation: chip-in 380ms var(--ease) both;
+  }
+  @keyframes chip-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  footer {
+    margin-top: 64px;
+    font-size: 12.5px;
+    color: #565070;
+  }
+</style>
+</head>
+<body>
+
+<div class="field" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<main>
+  <div class="mark">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Checking the model…</span>
+  </div>
+
+  <h1>What's underneath<br />what you just wrote?</h1>
+  <p class="lede">Type a sentence — a text you almost sent, a line from your journal, anything — and a small neural net will guess the feeling inside it.</p>
+
+  <form id="form">
+    <div class="field-wrap">
+      <label for="text" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Text to analyze</label>
+      <textarea id="text" maxlength="2000" placeholder="I finally finished the project and honestly I can't stop smiling…" required></textarea>
+      <div class="field-foot">
+        <span class="count" id="count">0 / 2000</span>
+        <button class="go" id="submitBtn" type="submit" disabled>
+          <span class="spin"></span><span class="label">Read my mood</span>
+        </button>
+      </div>
+    </div>
+    <p class="error" id="errorMsg"></p>
+  </form>
+
+  <section id="result" aria-live="polite">
+    <div class="headline-row">
+      <div class="emoji" id="resultEmoji">🙂</div>
+      <div class="headline-text">
+        <p class="say" id="resultConfidence">—</p>
+        <p class="emotion-word" id="resultWord">—</p>
+      </div>
+    </div>
+    <div class="bars" id="bars"></div>
+  </section>
+
+  <div id="history"></div>
+
+  <footer>Model runs on a BiGRU classifier · nothing you type is stored</footer>
+</main>
+
+<script>
+(() => {
+  const EMOTIONS = {
+    sadness:  { emoji: "😢", color: "#5b8def" },
+    joy:      { emoji: "😁", color: "#f2b807" },
+    anger:    { emoji: "😠", color: "#e5533d" },
+    fear:     { emoji: "😨", color: "#4fbf8b" },
+    surprise: { emoji: "😮", color: "#e0529c" },
+    love:     { emoji: "❤️", color: "#e0529c" },
+  };
+
+  const root = document.documentElement;
+  const dot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const form = document.getElementById("form");
+  const textarea = document.getElementById("text");
+  const count = document.getElementById("count");
+  const submitBtn = document.getElementById("submitBtn");
+  const errorMsg = document.getElementById("errorMsg");
+  const result = document.getElementById("result");
+  const resultEmoji = document.getElementById("resultEmoji");
+  const resultWord = document.getElementById("resultWord");
+  const resultConfidence = document.getElementById("resultConfidence");
+  const bars = document.getElementById("bars");
+  const history = document.getElementById("history");
+
+  let modelReady = false;
+
+  function setAccent(hex) {
+    root.style.setProperty("--accent", hex);
+    root.style.setProperty("--accent-soft", hex + "29");
+  }
+
+  function checkHealth() {
+    fetch("/health")
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(data => {
+        modelReady = !!data.model_loaded;
+        if (modelReady) {
+          dot.className = "dot ready";
+          statusText.textContent = "Model is warmed up and ready";
+          submitBtn.disabled = textarea.value.trim().length === 0;
+        } else {
+          dot.className = "dot";
+          statusText.textContent = "Model is still loading…";
+          setTimeout(checkHealth, 2500);
+        }
+      })
+      .catch(() => {
+        dot.className = "dot down";
+        statusText.textContent = "Can't reach the server right now";
+        setTimeout(checkHealth, 4000);
+      });
+  }
+  checkHealth();
+
+  textarea.addEventListener("input", () => {
+    count.textContent = `${textarea.value.length} / 2000`;
+    submitBtn.disabled = !modelReady || textarea.value.trim().length === 0;
+  });
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.classList.add("show");
+  }
+  function clearError() {
+    errorMsg.classList.remove("show");
+  }
+
+  function addHistoryChip(text, emoji) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    const short = text.length > 28 ? text.slice(0, 28) + "…" : text;
+    chip.innerHTML = `<span>${emoji}</span><span>${short.replace(/</g, "&lt;")}</span>`;
+    history.prepend(chip);
+    while (history.children.length > 6) history.removeChild(history.lastChild);
+  }
+
+  function renderResult(data) {
+    const info = EMOTIONS[data.predicted_emotion] || { emoji: "🙂", color: "#7c6fe0" };
+    setAccent(info.color);
+
+    resultEmoji.textContent = info.emoji;
+    resultWord.textContent = data.predicted_emotion;
+    resultConfidence.textContent = `${Math.round(data.confidence * 100)}% confident this is`;
+
+    const entries = Object.entries(data.all_probabilities).sort((a, b) => b[1] - a[1]);
+    bars.innerHTML = "";
+    entries.forEach(([label, prob], i) => {
+      const row = document.createElement("div");
+      row.className = "bar-row" + (i === 0 ? " top" : "");
+      row.innerHTML = `
+        <span class="bar-label">${label}</span>
+        <span class="bar-track"><span class="bar-fill"></span></span>
+        <span class="bar-pct">${Math.round(prob * 100)}%</span>
+      `;
+      bars.appendChild(row);
+    });
+
+    result.classList.remove("show");
+    void result.offsetWidth; // restart animation
+    result.classList.add("show");
+
+    requestAnimationFrame(() => {
+      const fills = bars.querySelectorAll(".bar-fill");
+      entries.forEach(([label, prob], i) => {
+        fills[i].style.width = `${Math.max(prob * 100, 2)}%`;
+        if (label === data.predicted_emotion) fills[i].style.background = info.color;
+      });
+    });
+
+    addHistoryChip(data.text, info.emoji);
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearError();
+    const text = textarea.value.trim();
+    if (!text || !modelReady) return;
+
+    submitBtn.disabled = true;
+    submitBtn.classList.add("loading");
+
+    try {
+      const res = await fetch("/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "The server couldn't read that one. Try again.");
+      }
+      const data = await res.json();
+      renderResult(data);
+    } catch (err) {
+      showError(err.message || "Something went wrong. Give it another try.");
+    } finally {
+      submitBtn.classList.remove("loading");
+      submitBtn.disabled = textarea.value.trim().length === 0;
+    }
+  });
+})();
+</script>
+</body>
+</html>
