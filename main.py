@@ -31,7 +31,7 @@ tokenizer_path = "Artifacts/tokenizer.pkl"
 max_sequence_length = 50
 
 #D. Emotioon Label
-emotion_labels = ['sadness', 'joy', 'anger', 'fear', 'surprise']
+emotion_labels = ['sadness', 'joy', 'love', 'anger', 'fear', 'surprise']
 
 #E. Emotion emojis
 EMOTION_EMOJIS = {
